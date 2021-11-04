@@ -1,3 +1,9 @@
+# Praw config file
+praw.ini
+
+# runtime files
+activeJobs.json
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
