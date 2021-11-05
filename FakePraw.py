@@ -114,4 +114,4 @@ class CommentForest:
         pass
 
     def __iter__(self):
-        return self._comments
+        return iter(self._comments)

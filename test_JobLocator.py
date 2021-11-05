@@ -43,10 +43,15 @@ class TestRegex:
             if not emptyJobLocator.is_mention(TestRegex.MinimalComment(body)):
                 fail(f"Did not consider \"{body}\" a valid mention")
 
+    # Mention is not formatted correctly, message is inbox due to a comment reply
     def test_invalid_mentions(self, emptyJobLocator):
         for body in TestData.ReplyComments:
             if emptyJobLocator.is_mention(TestRegex.MinimalComment(body)):
                 fail(f"Considered \"{body}\" a valid mention")
+
+    def test_ignore_pms(self, emptyJobLocator):
+        # TODO
+        return
 
     # Good mention, but terms are either formatted incorrectly or not present
     def test_invalid_summons(self, emptyJobLocator):
@@ -57,6 +62,23 @@ class TestRegex:
                 if sucess:
                     fail(f"Sucessfully recovered terms {terms} from summon \"{body}\"")
     
-    def test_multiple_occurences_of_term(self, emptyJobLocator):
+
+    def test_parse_terms(self, emptyJobLocator):
         # TODO
         return
+
+    def test_ignore_parent_comment(self, emptyJobLocator):
+        # TODO
+        return
+
+    def test_ignore_own_comment(self, emptyJobLocator):
+        # TODO
+        return
+
+    def test_select_first_term_in_comment(self, emptyJobLocator):
+        # TODO
+        return
+    
+    def test_match_first_term_in_summon(self, emptyJobLocator):
+        # TODO
+        return 

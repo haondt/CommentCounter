@@ -19,7 +19,7 @@ class JobLocater:
         return re.match(regex, body) and hasattr(comment, 'submission')
 
     def try_get_terms(self, comment):
-        regex = fr"(^|^.*\s)/?u/{self.username}\s*((?:[\w]+(?:/[\w]+)*(?:\s+|$))+).*"
+        regex = fr"(^|^.*\s)/?u/{self.username}\s*((?:[\w]+(?:/[\w]+)*(?:\s+|$))+)\s*$"
         termPart = re.match(regex, comment.body.lower())
         if termPart:
             # Split terms
