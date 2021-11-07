@@ -10,28 +10,26 @@ import Timeout
 FakePraw.State.Username = TestData.Username
 
 
-@pytest.fixture()
-def reddit():
-    # instantiate fake reddit
-    reddit = FakePraw.Reddit('bot1')
-
-    # Create some submissions
-    submissions = [reddit._create_submission("","") for _ in range(5)]
-
-    # Add the non-mention comments to each submission
-    for submission in submissions:
-        for body in TestData.Comments:
-            submission.reply(body, random.choice(TestData.Authors))
-    
-    # populate the Inbox stream
-    inboxCommentBodies = TestData.InboxComments
-    for body in inboxCommentBodies:
-        reddit.inbox._add_queued_comment(
-            lambda body=body: random.choice(submissions).reply(body, random.choice(TestData.Authors)))
-
-    yield reddit
+class TestTestData:
+    def test_unique_comments(self):
+        assert len(TestData.InboxComments) == len(set(TestData.InboxComments))    
 
 class TestComments:
+    @pytest.fixture()
+    def reddit(self):
+        # instantiate fake reddit
+        reddit = FakePraw.Reddit('bot1')
+
+        # Create some submissions
+        submissions = [reddit._create_submission("",author_name=random.choice(TestData.Authors)) for _ in range(5)]
+
+        # Add the non-mention comments to each submission
+        for submission in submissions:
+            for body in TestData.Comments:
+                submission.reply(body, random.choice(TestData.Authors))
+
+        yield reddit
+
     def test_comments_present(self, reddit):
         all_comments = set([c.body for  c in reddit._comments.values()])
         # make sure non-mention comments are present
@@ -47,7 +45,7 @@ class TestComments:
         # Add some comments to the submission
         top_level_comments = {}
         for _ in range(5):
-            comment = submission.reply("", author=random.choice(TestData.Authors))
+            comment = submission.reply("", author_name=random.choice(TestData.Authors))
             top_level_comments[comment.id] = comment
         assert len(top_level_comments) == 5
         
@@ -56,7 +54,7 @@ class TestComments:
         for tlc in top_level_comments.keys():
             child_comments[tlc] = {}
             for _ in range(10):
-                comment = top_level_comments[tlc].reply("", author=random.choice(TestData.Authors))
+                comment = top_level_comments[tlc].reply("", author_name=random.choice(TestData.Authors))
                 child_comments[tlc][comment.id] = comment
             assert len(child_comments[tlc]) == 10
 
@@ -93,7 +91,7 @@ class TestComments:
             parent = random.choice(list(reddit._submissions.values()))
             if random.randint(0,1) == 0:
                 parent = random.choice(list(reddit._comments.values()))
-            new_comment_ids.add(parent.reply("a comment body", author=random.choice(TestData.Authors)).id)
+            new_comment_ids.add(parent.reply("a comment body", author_name=random.choice(TestData.Authors)).id)
         
         # Recursively get comments from comment forests
         for submission in reddit._submissions.values():
@@ -105,13 +103,47 @@ class TestComments:
 
 
 class TestInbox:
+    @pytest.fixture()
+    def reddit(self):
+        # instantiate fake reddit
+        reddit = FakePraw.Reddit('bot1')
+
+        # Create some submissions
+        submissions = [reddit._create_submission("","") for _ in range(5)]
+
+        # Add the non-mention comments to each submission
+        for submission in submissions:
+            for body in TestData.Comments:
+                submission.reply(body, author_name=random.choice(TestData.Authors))
+
+        # populate the Inbox stream with comment replies that mention the bot
+        inboxCommentBodies = TestData.InvalidSummonComments + TestData.SummonComments
+        for body in inboxCommentBodies:
+            reddit.inbox._add_queued_comment(
+                lambda body=body: random.choice(submissions).reply(body, author_name=random.choice(TestData.Authors)))
+        
+        # populate the Inbox stream with pms
+        for body in TestData.PMs:
+            reddit.inbox._add_queued_comment(
+                lambda body=body: FakePraw.PM(random.choice(TestData.Authors), body))
+
+        # Add a comment from bot
+        botcomment = submissions[0].reply("Comment from bot")
+
+        # Populate inbox with comments that are a reply to a comment from the bot
+        for body in TestData.ReplyComments:
+            reddit.inbox._add_queued_comment(
+                lambda body=body: botcomment.reply(body, author_name=random.choice(TestData.Authors)))
+
+        yield reddit
+
     def test_inbox_populates_comments(self, reddit):
         # run through inbox
         Timeout.Run(lambda: [comment for comment in reddit.inbox.stream()], 0.1)
 
-        # make sure inbox comments have been instantiated
+        # make sure inbox comments have been instantiated as reddit comments
         all_comments = set([c.body for  c in reddit._comments.values()])
-        m_comments = set(TestData.InboxComments)
+        m_comments = set(TestData.InboxComments) - set(TestData.PMs)
         assert len(all_comments.intersection(m_comments)) == len(m_comments)
 
     def test_inbox_returns_instantiated_comments(self, reddit):
@@ -126,14 +158,13 @@ class TestInbox:
 
     def test_inbox_unread_persistence(self, reddit):
         # run through inbox twice
-        inbox_comments = []
-        Timeout.Run(lambda: [comment for comment in reddit.inbox.stream()], 0.1)
-        Timeout.Run(lambda: [inbox_comments.append(comment.body) for comment in reddit.inbox.stream()], 0.1)
+        run1 = []
+        run2 = []
+        Timeout.Run(lambda: [run1.append(comment.body) for comment in reddit.inbox.stream()], 0.1)
+        Timeout.Run(lambda: [run2.append(comment.body) for comment in reddit.inbox.stream()], 0.1)
 
         # make sure instantiated comments are still in inbox
-        inbox_comments = set(inbox_comments)
-        original_comments = set(TestData.InboxComments)
-        assert len(inbox_comments.intersection(original_comments)) == len(original_comments)
+        assert len(set(run1).intersection(set(run2))) == len(run1)
 
     def test_inbox_mark_read(self, reddit):
         # mark items in inbox as read
@@ -143,5 +174,22 @@ class TestInbox:
         inbox_comments = []
         Timeout.Run(lambda: [inbox_comments.append(comment.body) for comment in reddit.inbox.stream()], 0.1)
         assert len(inbox_comments) == 0
+
+    def test_pms_in_inbox(self, reddit):
+        # run through inbox
+        inbox_comments = []
+        Timeout.Run(lambda: [inbox_comments.append(comment.body) for comment in reddit.inbox.stream()], 0.1)
+
+        # make sure pms present
+        assert len(set(inbox_comments).intersection(set(TestData.PMs))) == len(TestData.PMs)
+
+
+    def test_pms_not_in_all_comments(self, reddit):
+        # Run through inbox
+        Timeout.Run(lambda: [comment for comment in reddit.inbox.stream()], 0.1)
+        
+        # Gather all comments
+        assert len(set([c.body for c in reddit._comments.values()])-set(TestData.PMs)) == len(set([c.body for c in reddit._comments.values()]))
+
 
             

@@ -18,6 +18,15 @@ class JobLocater:
         regex = fr"(^|^.*\s)/?u/{self.username}($|\s.*$)"
         return re.match(regex, body) and hasattr(comment, 'submission')
 
+    def ordered_distinct(self, l):
+        table = set()
+        out_list = []
+        for i in l:
+            if i not in table:
+                table.add(i)
+                out_list.append(i)
+        return out_list
+
     def try_get_terms(self, comment):
         regex = fr"(^|^.*\s)/?u/{self.username}\s*((?:[\w]+(?:/[\w]+)*(?:\s+|$))+)\s*$"
         termPart = re.match(regex, comment.body.lower())
@@ -31,15 +40,22 @@ class JobLocater:
             # Split combined terms
             terms = [i.split('/') for i in terms]
 
+            # Ensure no duplicate values in combined group of terms
+            terms = [self.ordered_distinct(i) for i in terms]
+
+            # Ensure no duplicate combined groups of terms
+            term_dict = {tuple(i):i for i in terms}
+            ordered_distinct_term_sets = self.ordered_distinct(term_dict.keys())
+            terms = [term_dict[i] for i in ordered_distinct_term_sets]
+
             return len(terms) > 0, terms
         return False, None
 
     def Run(self):
         for comment in self.reddit.inbox.stream():
-            # Filter out non-mentions and DMs
-            # TODO write tests for JR and FP for DMs
+            # Filter out non-mentions and PMs
             if self.is_mention(comment):
-                #comment.mark_read()
+                comment.mark_read()
                 # Get terms from comment
                 valid, terms = self.try_get_terms(comment)
                 if valid:

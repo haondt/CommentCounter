@@ -21,8 +21,8 @@ class FakeReddit:
         self._comments = {}
         self.inbox = Inbox()
 
-    def _create_submission(self, body, author):
-        submission = Submission(self)
+    def _create_submission(self, body, author_name):
+        submission = Submission(self, author_name)
         self._submissions[submission.id] = submission
         return submission
     
@@ -55,13 +55,10 @@ class Inbox():
                 updated_unread_comments.append(comment)
         self._unread_comments = updated_unread_comments
 
-    def stream(self, checkContinue=None):
+    def stream(self):
         self._update_read_lists()
         stream_comments = [i for i in self._unread_comments]
         while True:
-            if checkContinue is not None:
-                if not checkContinue():
-                    break
             if len(stream_comments) > 0:
                 yield stream_comments.pop()
 
@@ -71,7 +68,7 @@ class Inbox():
                 yield new_comment
 
 class Comment:
-    def __init__(self, author, body, submission, parent=None):
+    def __init__(self, author_name, body, submission, parent=None):
         parent = parent or submission
         self._submission = submission
         self._parent = parent
@@ -80,31 +77,41 @@ class Comment:
         self.id = generate_id()
         self._submission._reddit._comments[self.id] = self
 
-        self.author = author
+        self.author = Redditor(author_name)
         self.body = body
         self.replies = CommentForest()
 
-    def reply(self, body, author=State.Username):
-        comment = Comment(author, body, self._submission, self)
+    def reply(self, body, author_name=State.Username):
+        comment = Comment(author_name, body, self._submission, self)
         self.replies._comments.append(comment)
         return comment
     
     def mark_read(self):
         self._read = True
+
+class PM:
+    def __init__(self, author_name, body):
+        self.author = Redditor(author_name)
+        self._read = False
+        self.id = generate_id()
+        self.body = body
+    
+    def mark_read(self):
+        self._read = True
+
     
 
 class Submission:
-    def __init__(self, reddit):
+    def __init__(self, reddit, author_name):
         self._reddit = reddit
         self.id = generate_id()
         self.comments = CommentForest()
+        self.author = Redditor(author_name)
 
-    def reply(self, body, author=State.Username):
-        comment = Comment(author, body, self, self)
+    def reply(self, body, author_name=State.Username):
+        comment = Comment(author_name, body, self, self)
         self.comments._comments.append(comment)
         return comment
-
-
 
 class CommentForest:
     def __init__(self):
@@ -115,3 +122,10 @@ class CommentForest:
 
     def __iter__(self):
         return iter(self._comments)
+
+class Redditor:
+    def __init__(self, name):
+        self.name = name
+
+    def __str__(self):
+        return self.name

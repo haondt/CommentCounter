@@ -37,21 +37,29 @@ class TestRegex:
         def __init__(self, body):
             self.body = body
             self.submission = None
+    class MinimalPM:
+        def __init__(self, body):
+            self.body = body
 
     def test_valid_mentions(self, emptyJobLocator):
         for body in TestData.SummonComments + TestData.InvalidSummonComments:
-            if not emptyJobLocator.is_mention(TestRegex.MinimalComment(body)):
+            comment = TestRegex.MinimalComment(body)
+            if not emptyJobLocator.is_mention(comment):
                 fail(f"Did not consider \"{body}\" a valid mention")
 
     # Mention is not formatted correctly, message is inbox due to a comment reply
     def test_invalid_mentions(self, emptyJobLocator):
         for body in TestData.ReplyComments:
-            if emptyJobLocator.is_mention(TestRegex.MinimalComment(body)):
+            comment = TestRegex.MinimalComment(body)
+            if emptyJobLocator.is_mention(comment):
                 fail(f"Considered \"{body}\" a valid mention")
 
+    # Ignore pms
     def test_ignore_pms(self, emptyJobLocator):
-        # TODO
-        return
+        for body in TestData.PMs:
+            pm = TestRegex.MinimalPM(body)
+            if emptyJobLocator.is_mention(pm):
+                fail(f"Considered pm a valid mention")
 
     # Good mention, but terms are either formatted incorrectly or not present
     def test_invalid_summons(self, emptyJobLocator):
@@ -62,23 +70,23 @@ class TestRegex:
                 if sucess:
                     fail(f"Sucessfully recovered terms {terms} from summon \"{body}\"")
     
-
+    # Get the terms correctly and remove duplicates as necessary
     def test_parse_terms(self, emptyJobLocator):
-        # TODO
+        for pair in TestData.SummonCommentPairs:
+            comment = TestRegex.MinimalComment(pair[0])
+            valid, terms = emptyJobLocator.try_get_terms(comment)
+            if valid:
+                if terms != pair[1]:
+                    fail(f"Failed to gather terms {pair[1]} from summon {comment.body}.\n Found instead {terms}")
+            else:
+                fail(f"Failed to recover terms from summon \"{comment.body}\"")
+
+class TestAddJobs:
+    def test_add_job(self):
         return
 
-    def test_ignore_parent_comment(self, emptyJobLocator):
-        # TODO
+    def test_add_jobs_for_same_submission(self):
         return
 
-    def test_ignore_own_comment(self, emptyJobLocator):
-        # TODO
+    def test_add_jobs_for_different_submissions(self):
         return
-
-    def test_select_first_term_in_comment(self, emptyJobLocator):
-        # TODO
-        return
-    
-    def test_match_first_term_in_summon(self, emptyJobLocator):
-        # TODO
-        return 

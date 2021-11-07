@@ -27,4 +27,3 @@ jobRunnerThread = threading.Thread(target=jobRunner.Run)
 jobRunnerThread.start()
 jobLocaterThread = threading.Thread(target=jobLocater.Run)
 jobLocaterThread.start()
-
