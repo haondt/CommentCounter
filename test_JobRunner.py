@@ -37,7 +37,14 @@ class TestModifyJobFile:
     def test_run_job_where_count_comment_removed(self):
         return
 
-    def test_initial_job_run_where_thread_is_locked(self):
+class TestInitialJobRuns:
+    def test_thread_is_locked(self):
+        return
+
+    def test_thread_is_archived(self):
+        return
+
+    def test_sub_is_private(self):
         return
 
 class TestErrorRecovery:

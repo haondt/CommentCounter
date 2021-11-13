@@ -1,8 +1,9 @@
-import json
+import JsonExtended as json
 from random import paretovariate
 import re
 from datetime import datetime, timedelta
 from Models import Job
+from Models.State import State
 
 class JobLocater:
     def __init__(self, mutex, activeJobFile, username, reddit, forceRun, numUpdates=24):
@@ -62,30 +63,29 @@ class JobLocater:
                     # acquire mutex
                     self.mutex.acquire()
 
-                    activeJobs = None
+                    state = None
                     rewriteActiveJobs = False
                     with open(self.activeJobFile, "r") as f:
-                        activeJobs = json.loads(f.read())
+                        state = json.loads(f.read(), State)
                         # Add a new job for the comment we are replying to
                         parentId = str(comment.id)
                         submissionId = str(comment.submission.id)
                         print("locating job for", submissionId, parentId)
-                        if submissionId not in activeJobs:
-                            activeJobs[submissionId] = {}
+                        if submissionId not in state.submissions:
+                            state.submissions[submissionId] = {}
                             print("added entry for submission id", submissionId)
-                        if parentId not in activeJobs[submissionId]:
-                            newJob = Job()
+                        if parentId not in state.submissions[submissionId]:
+                            newJob = Job.Job()
                             newJob.RemainingUpdates = self.numUpdates
                             newJob.Terms = terms
-                            newJob.ParentCommentId = comment.id
-                            activeJobs[submissionId][parentId] = newJob.__dict__
+                            state.submissions[submissionId][parentId] = newJob
                             rewriteActiveJobs = True
                             print("added job for parent id", parentId)
                     
                     if rewriteActiveJobs:
                         with open(self.activeJobFile, "w") as f:
                             print("Writing to active job file")
-                            f.write(json.dumps(activeJobs))
+                            f.write(json.dumps(state))
 
                     self.mutex.release()
 

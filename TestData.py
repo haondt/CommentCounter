@@ -2,6 +2,9 @@
 # Username to use when constructing new comments
 Username = "CountTheComments"
 
+# File to store active jobs in
+ActiveJobFile = "activeJobsTest.json"
+
 # Possible comment authors
 Authors = ["authorA", "authorB"]
 

@@ -70,19 +70,19 @@ class Inbox():
 class Comment:
     def __init__(self, author_name, body, submission, parent=None):
         parent = parent or submission
-        self._submission = submission
+        self.submission = submission
         self._parent = parent
         self._read = True
 
         self.id = generate_id()
-        self._submission._reddit._comments[self.id] = self
+        self.submission._reddit._comments[self.id] = self
 
         self.author = Redditor(author_name)
         self.body = body
         self.replies = CommentForest()
 
     def reply(self, body, author_name=State.Username):
-        comment = Comment(author_name, body, self._submission, self)
+        comment = Comment(author_name, body, self.submission, self)
         self.replies._comments.append(comment)
         return comment
     
