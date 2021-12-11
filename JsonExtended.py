@@ -1,5 +1,4 @@
 import json
-from typing import get_type_hints
 
 def dumps(obj):
     to_dict = getattr(obj, 'to_dict', None)

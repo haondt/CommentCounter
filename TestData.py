@@ -29,7 +29,12 @@ CommentsTermPairs = [
     ("Emili Ram", ["ram"]),
     ("E.M.T.", []),
     ("E.M.T. number 1, Rem number 2!", ["rem"]),
-    ("Toss up between emilia and rem", ["emilia", "rem"])
+    ("Toss up between emilia and rem", ["emilia", "rem"]),
+    ("Remember this", []),
+    ("?Rem", ["rem"]),
+    ("?Rem?", ["rem"]),
+    ("Rem?", ["rem"]),
+    ("RemRem", [])
 ]
 
 Comments = [i[0] for i in CommentsTermPairs]

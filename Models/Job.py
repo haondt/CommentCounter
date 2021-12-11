@@ -1,5 +1,4 @@
 from typing import Sequence
-import json
 
 class Job:
     CountCommentId: str = None

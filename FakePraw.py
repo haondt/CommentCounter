@@ -8,7 +8,7 @@ class FakeState:
 State = FakeState()
 
 def generate_id():
-    return random.randint(0,1000000)
+    return str(random.randint(0,1000000))
 
 def Reddit(string):
     return FakeReddit()

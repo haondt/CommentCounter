@@ -118,7 +118,7 @@ class TestAddJobs:
 
     def test_add_job(self, jobLocator):
         # Run through inbox
-        Timeout.Run(jobLocator.Run, 0.2)
+        Timeout.Run(jobLocator.Run, 0.5)
 
         # Get counts for each comment grouped by its terms
         summons = {}

@@ -1,8 +1,6 @@
 import JsonExtended as json
-from random import paretovariate
 import re
-from datetime import datetime, timedelta
-from Models import Job
+from Models.Job import Job
 from Models.State import State
 
 class JobLocater:
@@ -68,14 +66,14 @@ class JobLocater:
                     with open(self.activeJobFile, "r") as f:
                         state = json.loads(f.read(), State)
                         # Add a new job for the comment we are replying to
-                        parentId = str(comment.id)
-                        submissionId = str(comment.submission.id)
+                        parentId = comment.id
+                        submissionId = comment.submission.id
                         print("locating job for", submissionId, parentId)
                         if submissionId not in state.submissions:
                             state.submissions[submissionId] = {}
                             print("added entry for submission id", submissionId)
                         if parentId not in state.submissions[submissionId]:
-                            newJob = Job.Job()
+                            newJob = Job()
                             newJob.RemainingUpdates = self.numUpdates
                             newJob.Terms = terms
                             state.submissions[submissionId][parentId] = newJob
