@@ -12,7 +12,7 @@ FakePraw.State.Username = TestData.Username
 
 class TestTestData:
     def test_unique_comments(self):
-        assert len(TestData.InboxComments) == len(set(TestData.InboxComments))    
+        assert len(TestData.InboxComments) == len(set(TestData.InboxComments))
 
 class TestComments:
     @pytest.fixture()
@@ -21,7 +21,7 @@ class TestComments:
         reddit = FakePraw.Reddit('bot1')
 
         # Create some submissions
-        submissions = [reddit._create_submission("",author_name=random.choice(TestData.Authors)) for _ in range(5)]
+        submissions = [reddit._create_submission("", author_name=random.choice(TestData.Authors)) for _ in range(5)]
 
         # Add the non-mention comments to each submission
         for submission in submissions:
@@ -31,14 +31,14 @@ class TestComments:
         yield reddit
 
     def test_comments_present(self, reddit):
-        all_comments = set([c.body for  c in reddit._comments.values()])
+        all_comments = set([c.body for c in reddit._comments.values()])
         # make sure non-mention comments are present
         nm_comments = set(TestData.Comments)
         assert len(all_comments.intersection(nm_comments)) == len(nm_comments)
         # make sure none of uninstantiated inbox comments are present
         m_comments = set(TestData.InboxComments)
         assert len(all_comments.intersection(m_comments)) == 0
-    
+
     def test_commentForest_iterable(self, reddit):
         # Create a new submission
         submission = reddit._create_submission("","")
@@ -48,7 +48,7 @@ class TestComments:
             comment = submission.reply("", author_name=random.choice(TestData.Authors))
             top_level_comments[comment.id] = comment
         assert len(top_level_comments) == 5
-        
+
         child_comments = {}
         # Add some child comments
         for tlc in top_level_comments.keys():
@@ -92,14 +92,23 @@ class TestComments:
             if random.randint(0,1) == 0:
                 parent = random.choice(list(reddit._comments.values()))
             new_comment_ids.add(parent.reply("a comment body", author_name=random.choice(TestData.Authors)).id)
-        
+
         # Recursively get comments from comment forests
         for submission in reddit._submissions.values():
             for top_level_comment in submission.comments:
                 self.recursively_fetch_comments(top_level_comment, lambda x: new_comment_ids.remove(x.id) if x.id in new_comment_ids else None)
-        
+
         # Ensure all newly created comments were retrieved
         assert len(new_comment_ids) == 0
+
+    def test_get_comment_by_id(self, reddit):
+        submission = reddit._create_submission("", "submitter")
+        comment = submission.reply("comment text", "comment_submitter")
+        comment_search = reddit.comment(id=comment.id)
+        assert comment_search.id == comment.id
+        assert comment.body == comment_search.body
+        assert comment.author == comment_search.author
+
 
 
 class TestInbox:
@@ -121,7 +130,7 @@ class TestInbox:
         for body in inboxCommentBodies:
             reddit.inbox._add_queued_comment(
                 lambda body=body: random.choice(submissions).reply(body, author_name=random.choice(TestData.Authors)))
-        
+
         # populate the Inbox stream with pms
         for body in TestData.PMs:
             reddit.inbox._add_queued_comment(
@@ -148,11 +157,11 @@ class TestInbox:
 
     def test_inbox_returns_instantiated_comments(self, reddit):
         # run through inbox
-        inbox_comments = []
-        Timeout.Run(lambda: [inbox_comments.append(comment.body) for comment in reddit.inbox.stream()], 0.1)
+        inbox_comments_list = []
+        Timeout.Run(lambda: [inbox_comments_list.append(comment.body) for comment in reddit.inbox.stream()], 0.1)
 
         # make sure instantiated comments are in inbox
-        inbox_comments = set(inbox_comments)
+        inbox_comments = set(inbox_comments_list)
         original_comments = set(TestData.InboxComments)
         assert len(inbox_comments.intersection(original_comments)) == len(original_comments)
 
@@ -187,9 +196,6 @@ class TestInbox:
     def test_pms_not_in_all_comments(self, reddit):
         # Run through inbox
         Timeout.Run(lambda: [comment for comment in reddit.inbox.stream()], 0.1)
-        
+
         # Gather all comments
         assert len(set([c.body for c in reddit._comments.values()])-set(TestData.PMs)) == len(set([c.body for c in reddit._comments.values()]))
-
-
-            

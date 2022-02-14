@@ -25,7 +25,7 @@ class FakeReddit:
         submission = Submission(self, author_name)
         self._submissions[submission.id] = submission
         return submission
-    
+
     def comment(self, id):
         return self._comments[id]
 
@@ -85,7 +85,10 @@ class Comment:
         comment = Comment(author_name, body, self.submission, self)
         self.replies._comments.append(comment)
         return comment
-    
+
+    def edit(self, body):
+        self.body = body
+
     def mark_read(self):
         self._read = True
 
@@ -95,11 +98,11 @@ class PM:
         self._read = False
         self.id = generate_id()
         self.body = body
-    
+
     def mark_read(self):
         self._read = True
 
-    
+
 
 class Submission:
     def __init__(self, reddit, author_name):

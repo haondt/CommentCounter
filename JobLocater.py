@@ -2,20 +2,20 @@ import JsonExtended as json
 import re
 from Models.Job import Job
 from Models.State import State
+import Utils
+
 
 class JobLocater:
-    def __init__(self, mutex, activeJobFile, username, reddit, forceRun, numUpdates=24):
+    def __init__(self, mutex, storage, username, reddit, forceRun, numUpdates=24):
         self.mutex = mutex
         self.reddit = reddit
-        self.activeJobFile = activeJobFile
+        self._storage = storage
         self.forceRun = forceRun
         self.numUpdates = numUpdates
         self.username = username.lower()
 
     def is_mention(self, comment):
-        body = comment.body.lower()
-        regex = fr"(^|^.*\s)/?u/{self.username}($|\s.*$)"
-        return re.match(regex, body) and hasattr(comment, 'submission')
+        return Utils.is_mention(self.username, comment)
 
     def ordered_distinct(self, l):
         table = set()
@@ -43,7 +43,7 @@ class JobLocater:
             terms = [self.ordered_distinct(i) for i in terms]
 
             # Ensure no duplicate combined groups of terms
-            term_dict = {tuple(i):i for i in terms}
+            term_dict = {tuple(i): i for i in terms}
             ordered_distinct_term_sets = self.ordered_distinct(term_dict.keys())
             terms = [term_dict[i] for i in ordered_distinct_term_sets]
 
@@ -63,27 +63,25 @@ class JobLocater:
 
                     state = None
                     rewriteActiveJobs = False
-                    with open(self.activeJobFile, "r") as f:
-                        state = json.loads(f.read(), State)
-                        # Add a new job for the comment we are replying to
-                        parentId = comment.id
-                        submissionId = comment.submission.id
-                        print("locating job for", submissionId, parentId)
-                        if submissionId not in state.submissions:
-                            state.submissions[submissionId] = {}
-                            print("added entry for submission id", submissionId)
-                        if parentId not in state.submissions[submissionId]:
-                            newJob = Job()
-                            newJob.RemainingUpdates = self.numUpdates
-                            newJob.Terms = terms
-                            state.submissions[submissionId][parentId] = newJob
-                            rewriteActiveJobs = True
-                            print("added job for parent id", parentId)
-                    
+                    state = self._storage.GetState()
+                    # Add a new job for the comment we are replying to
+                    parentId = comment.id
+                    submissionId = comment.submission.id
+                    print("locating job for", submissionId, parentId)
+                    if submissionId not in state.submissions:
+                        state.submissions[submissionId] = {}
+                        print("added entry for submission id", submissionId)
+                    if parentId not in state.submissions[submissionId]:
+                        newJob = Job()
+                        newJob.RemainingUpdates = self.numUpdates
+                        newJob.Terms = terms
+                        state.submissions[submissionId][parentId] = newJob
+                        rewriteActiveJobs = True
+                        print("added job for parent id", parentId)
+
                     if rewriteActiveJobs:
-                        with open(self.activeJobFile, "w") as f:
-                            print("Writing to active job file")
-                            f.write(json.dumps(state))
+                        print("Writing to active job file")
+                        self._storage.SetState(state)
 
                     self.mutex.release()
 

@@ -8,8 +8,8 @@ import TestData
 import random
 import os
 import Timeout
-import JsonExtended as json
 from pytest import fail
+from Storage import MemoryStorage as Storage
 
 FakePraw.State.Username = TestData.Username
 
@@ -31,7 +31,7 @@ def reddit():
     for body in inboxCommentBodies:
         reddit.inbox._add_queued_comment(
             lambda body=body: random.choice(submissions).reply(body, author_name=random.choice(TestData.Authors)))
-    
+
     # populate the Inbox stream with pms
     for body in TestData.PMs:
         reddit.inbox._add_queued_comment(
@@ -53,9 +53,8 @@ def emptyJobLocator():
 
 @pytest.fixture()
 def jobLocator(reddit):
-    with open(TestData.ActiveJobFile, "w") as f:
-        f.write(json.dumps(State()))
-    yield JobLocater(FakeMutex(), TestData.ActiveJobFile, TestData.Username, reddit, lambda: None, 24)
+    storage = Storage(State())
+    yield JobLocater(FakeMutex(), storage, TestData.Username, reddit, lambda: None, 24)
     # cleanup
     if os.path.exists(TestData.ActiveJobFile):
         os.remove(TestData.ActiveJobFile)
@@ -98,7 +97,7 @@ class TestRegex:
                 sucess, terms = emptyJobLocator.try_get_terms(comment)
                 if sucess:
                     fail(f"Sucessfully recovered terms {terms} from summon \"{body}\"")
-    
+
     # Get the terms correctly and remove duplicates as necessary
     def test_parse_terms(self, emptyJobLocator):
         for pair in TestData.SummonCommentPairs:
@@ -129,15 +128,13 @@ class TestAddJobs:
             summons[key] += 1
 
         # Make sure jobs have been added for each summon comment
-        state = None
-        with open(TestData.ActiveJobFile, "r") as f:
-            state = json.loads(f.read(), State)
-            for submission in state.submissions.values():
-                for job in submission.values():
-                    key = self.list_to_enum(job.Terms)
-                    if key not in summons:
-                        fail(f"Found extraneous job for terms {job.Terms}")
-                    else:
-                        summons[key] -= 1
+        state = jobLocator._storage.GetState()
+        for submission in state.submissions.values():
+            for job in submission.values():
+                key = self.list_to_enum(job.Terms)
+                if key not in summons:
+                    fail(f"Found extraneous job for terms {job.Terms}")
+                else:
+                    summons[key] -= 1
 
         assert all ([i == 0 for i in  summons.values()])
