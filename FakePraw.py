@@ -80,6 +80,7 @@ class Comment:
         self.author = Redditor(author_name)
         self.body = body
         self.replies = CommentForest()
+        self._throw_error_on_edit = False
 
     def reply(self, body, author_name=State.Username):
         comment = Comment(author_name, body, self.submission, self)
@@ -88,6 +89,8 @@ class Comment:
 
     def edit(self, body):
         self.body = body
+        if self._throw_error_on_edit:
+            raise Exception()
 
     def mark_read(self):
         self._read = True

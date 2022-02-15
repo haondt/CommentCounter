@@ -3,16 +3,18 @@ import time
 from CommentFormatter import CommentFormatter
 import re
 import numpy as np
+from Logger import Logger
 import Utils
 
 class JobRunner:
-    def __init__(self, mutex, storage, username, reddit, updateInterval=timedelta(hours=1), commentFormatter=CommentFormatter()):
+    def __init__(self, mutex, storage, username, reddit, updateInterval=timedelta(hours=1), commentFormatter=CommentFormatter(), logger=Logger()):
         self.mutex = mutex
         self._storage = storage
         self.reddit = reddit
         self.updateInterval = updateInterval
         self.username = username.lower()
         self.commentFormatter = commentFormatter
+        self._logger = logger
 
     # Return a matrix where each row represents one comment,
     # And each column is a term. Each cell represents if
@@ -27,10 +29,15 @@ class JobRunner:
                 (re.I | re.S)
             )
             for comment in comments:
-                if comment.body is None or comment.id in ignore_comments or Utils.is_mention(self.username, comment):
+                try:
+                    if comment.body is None or comment.id in ignore_comments or Utils.is_mention(self.username, comment):
+                        termVector.append(False)
+                    else:
+                        termVector.append(bool(regex.match(comment.body)))
+                except Exception as e:
+                    self._logger.log_error("Error when counting terms in comment:", e)
                     termVector.append(False)
-                else:
-                    termVector.append(bool(regex.match(comment.body)))
+
             countMatrix.append(termVector)
         # transpose
         countMatrix = [*zip(*countMatrix)]
@@ -43,13 +50,10 @@ class JobRunner:
 
 
     def RunJobs(self, onlyRunNewJobs=False):
-        # Run only new jobs
-        print("Force running jobs")
         self.mutex.acquire()
 
         state = self._storage.GetState()
 
-        submissions_to_remove = set()
         for sid in state.submissions:
             # Get jobs to update
             jobTuples = []
@@ -58,50 +62,60 @@ class JobRunner:
                 job = state.submissions[sid][pid]
                 if (not onlyRunNewJobs) or (job.CountCommentId is None):
                     parentComment = self.reddit.comment(id=pid)
-                    # TODO: check if parent comment is removed/deleted/etc
-                    # TODO: check if subnmission is deleted/archived/removed/etc
                     if job.RemainingUpdates == 0:
                         jobs_to_remove.add(pid)
                     else:
                         jobTuples.append((job, parentComment))
 
             if (len(jobTuples) > 0):
-                # Fetch the comments
-                submission = self.reddit.submission(sid)
-                submission.comments.replace_more(limit=0)
+                try:
+                    # Fetch the comments
+                    submission = self.reddit.submission(sid)
+                    submission.comments.replace_more(limit=0)
 
-                # amalgamate all the terms from all active jobs for this submission
-                allTerms = [j.Terms for (j, c) in jobTuples]
-                allTerms = self._flatten(allTerms, 2)
-                allTerms = list(set(allTerms))
+                    # amalgamate all the terms from all active jobs for this submission
+                    allTerms = [j.Terms for (j, c) in jobTuples]
+                    allTerms = self._flatten(allTerms, 2)
+                    allTerms = list(set(allTerms))
 
-                ignored_comment_ids = []
-                for (job, parentComment) in jobTuples:
-                    if job.CountCommentId is not None:
-                        ignored_comment_ids.append(job.CountCommentId)
-                    ignored_comment_ids.append(parentComment.id)
+                    ignored_comment_ids = []
+                    for (job, parentComment) in jobTuples:
+                        if job.CountCommentId is not None:
+                            ignored_comment_ids.append(job.CountCommentId)
+                        ignored_comment_ids.append(parentComment.id)
 
-                # Count the comments
-                counts = self.CountTheComments(submission.comments, allTerms, set(ignored_comment_ids))
+                    # Count the comments
+                    counts = self.CountTheComments(submission.comments, allTerms, set(ignored_comment_ids))
 
-                for (job, parentComment) in jobTuples:
-                    # Form the comment
-                    commentStr = self.commentFormatter.format(counts, job.Terms, np.array(allTerms), job.RemainingUpdates-1)
+                    for (job, parentComment) in jobTuples:
+                        # Form the comment
+                        commentStr = self.commentFormatter.format(counts, job.Terms, np.array(allTerms), job.RemainingUpdates-1)
 
-                    # Edit existing comment
-                    if (job.CountCommentId is not None):
-                        countComment = self.reddit.comment(id=job.CountCommentId)
-                        countComment.edit(commentStr)
-                    # Reply to parent
-                    else:
-                        countComment = parentComment.reply(commentStr)
-                        job.CountCommentId = countComment.id
+                        # Edit existing comment
+                        if (job.CountCommentId is not None):
+                            try:
+                                countComment = self.reddit.comment(id=job.CountCommentId)
+                                countComment.edit(commentStr)
+                            except Exception as e:
+                                self._logger.log_error("Exception while trying to edit count comment: ", e)
+                        # Reply to parent
+                        else:
+                            try:
+                                countComment = parentComment.reply(commentStr)
+                                job.CountCommentId = countComment.id
+                            except Exception as e:
+                                self._logger.log_error("Exception while trying to reply to parent: ", e)
 
-                    # decrease the counter
-                    job.RemainingUpdates -= 1
+                        # decrease the counter
+                        job.RemainingUpdates -= 1
 
-                    if job.RemainingUpdates <= 0:
-                        jobs_to_remove.add(parentComment.id)
+                        if job.RemainingUpdates <= 0:
+                            jobs_to_remove.add(parentComment.id)
+
+                except Exception as e:
+                    self._logger.log_error("Exception while trying to run job: ", e)
+                    state.submissions[sid] = {}
+
 
             # Remove expired jobs
             for pid in jobs_to_remove:
@@ -117,7 +131,6 @@ class JobRunner:
 
         self.mutex.release()
 
-
     def Run(self):
         while True:
             self.mutex.acquire()
@@ -127,8 +140,10 @@ class JobRunner:
 
     # Run only jobs that have never been run before
     def RunNewJobs(self):
+        self._logger.log("Running new jobs")
         self.RunJobs(True)
 
     # Run all jobs
     def RunScheduledJobs(self):
+        self._logger.log("Running scheduled jobs")
         self.RunJobs(False)

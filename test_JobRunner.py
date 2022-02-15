@@ -1,5 +1,3 @@
-from attr import has
-from constantly import FlagConstant
 import pytest
 import FakePraw
 import random
@@ -7,9 +5,7 @@ import TestData
 from Models.Job import Job
 from Models.State import State
 from JobRunner import JobRunner
-import JsonExtended as json
 from FakeMutex import FakeMutex
-import os
 import numpy as np
 from FakeCommentFormatter import FakeCommentFormatter
 from test_JobLocator import jobLocator
@@ -36,14 +32,28 @@ def storage():
     storage.DeleteState()
 
 @pytest.fixture()
-def jobRunner(reddit, storage):
-    yield JobRunner(FakeMutex(), storage, TestData.Username, reddit, commentFormatter=FakeCommentFormatter())
+def commentFormatter():
+    yield FakeCommentFormatter()
+
+@pytest.fixture()
+def jobRunner(reddit, storage, commentFormatter):
+    yield JobRunner(FakeMutex(), storage, TestData.Username, reddit, commentFormatter=commentFormatter)
 
 class MinimalComment:
     def __init__(self, body):
         self.body = body
         self.submission = None
         self.id = str(random.randint(0,1000000))
+
+class ExceptionComment:
+    def __init__(self):
+        self.body = ""
+        self.submission = None
+        self.id = str(random.randint(0,1000000))
+
+    def edit(self, body):
+        raise Exception()
+
 
 class TestCollectComments:
     def test_count_comments(self, jobRunner):
@@ -350,14 +360,38 @@ class TestModifyJobFile:
         state = storage.GetState()
         assert submission.id not in state.submissions
 
-    def test_run_job_where_count_comment_removed(self):
-        return
+    def test_run_job_where_count_comment_removed(self, reddit, jobRunner, storage, commentFormatter):
+        submission = reddit._create_submission("", "submitter")
 
-    def test_run_job_where_summon_comment_removed(self):
-        return
+        # Create job
+        job = Job()
+        job.RemainingUpdates = 5
+        job.Terms = [["rem"]]
 
-    def test_run_job_where_submission_removed(self):
-        return
+        summon = submission.reply("/u/countthecomments", "bar")
+
+        # Write job to file
+        state = storage.GetState()
+        state.submissions[submission.id] = {}
+        state.submissions[submission.id][summon.id] = job
+        storage.SetState(state)
+
+        # Run job
+        jobRunner.RunScheduledJobs()
+
+        state = storage.GetState()
+        assert state.submissions[submission.id][summon.id].RemainingUpdates == 4
+        assert len(commentFormatter.Counts) == 1
+
+        # bork comment
+        replies = [c for c in summon.replies]
+        replies[0]._throw_error_on_edit = True
+
+        jobRunner.RunScheduledJobs()
+
+        state = storage.GetState()
+        assert state.submissions[submission.id][summon.id].RemainingUpdates == 3
+        assert len(commentFormatter.Counts) == 2
 
 class TestErrorRecovery:
     def test_thread_is_locked(self):
@@ -367,6 +401,9 @@ class TestErrorRecovery:
         return
 
     def test_sub_is_private(self):
+        return
+
+    def test_will_not_count_borked_comments(self):
         return
     # - author null = removed or deleted -> doesn't matter unless this is the count comment
     # - body null
