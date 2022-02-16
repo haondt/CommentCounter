@@ -5,13 +5,14 @@ import re
 import numpy as np
 from Logger import Logger
 import Utils
+from Models.State import State
 
 class JobRunner:
     def __init__(self, mutex, storage, username, reddit, updateInterval=timedelta(hours=1), commentFormatter=CommentFormatter(), logger=Logger()):
         self.mutex = mutex
         self._storage = storage
         self.reddit = reddit
-        self.updateInterval = updateInterval
+        self._updateInterval = updateInterval
         self.username = username.lower()
         self.commentFormatter = commentFormatter
         self._logger = logger
@@ -52,79 +53,96 @@ class JobRunner:
     def RunJobs(self, onlyRunNewJobs=False):
         self.mutex.acquire()
 
-        state = self._storage.GetState()
+        try:
+            state = self._storage.GetState()
+        except Exception as e:
+            self._logger.log_error("Error while getting state", e)
+            state = State()
+            self._storage.SetState(state)
 
-        for sid in state.submissions:
-            # Get jobs to update
-            jobTuples = []
-            jobs_to_remove = set()
-            for pid in state.submissions[sid]:
-                job = state.submissions[sid][pid]
-                if (not onlyRunNewJobs) or (job.CountCommentId is None):
-                    parentComment = self.reddit.comment(id=pid)
-                    if job.RemainingUpdates == 0:
-                        jobs_to_remove.add(pid)
-                    else:
-                        jobTuples.append((job, parentComment))
-
-            if (len(jobTuples) > 0):
-                try:
-                    # Fetch the comments
-                    submission = self.reddit.submission(sid)
-                    submission.comments.replace_more(limit=0)
-
-                    # amalgamate all the terms from all active jobs for this submission
-                    allTerms = [j.Terms for (j, c) in jobTuples]
-                    allTerms = self._flatten(allTerms, 2)
-                    allTerms = list(set(allTerms))
-
-                    ignored_comment_ids = []
-                    for (job, parentComment) in jobTuples:
-                        if job.CountCommentId is not None:
-                            ignored_comment_ids.append(job.CountCommentId)
-                        ignored_comment_ids.append(parentComment.id)
-
-                    # Count the comments
-                    counts = self.CountTheComments(submission.comments, allTerms, set(ignored_comment_ids))
-
-                    for (job, parentComment) in jobTuples:
-                        # Form the comment
-                        commentStr = self.commentFormatter.format(counts, job.Terms, np.array(allTerms), job.RemainingUpdates-1)
-
-                        # Edit existing comment
-                        if (job.CountCommentId is not None):
-                            try:
-                                countComment = self.reddit.comment(id=job.CountCommentId)
-                                countComment.edit(commentStr)
-                            except Exception as e:
-                                self._logger.log_error("Exception while trying to edit count comment: ", e)
-                        # Reply to parent
-                        else:
-                            try:
-                                countComment = parentComment.reply(commentStr)
-                                job.CountCommentId = countComment.id
-                            except Exception as e:
-                                self._logger.log_error("Exception while trying to reply to parent: ", e)
-
-                        # decrease the counter
-                        job.RemainingUpdates -= 1
-
+        try:
+            for sid in state.submissions:
+                # Get jobs to update
+                jobTuples = []
+                jobs_to_remove = set()
+                for pid in state.submissions[sid]:
+                    job = state.submissions[sid][pid]
+                    if (not onlyRunNewJobs) or (job.CountCommentId is None):
+                        parentComment = self.reddit.comment(id=pid)
                         if job.RemainingUpdates <= 0:
-                            jobs_to_remove.add(parentComment.id)
+                            jobs_to_remove.add(pid)
+                        else:
+                            jobTuples.append((job, parentComment))
 
-                except Exception as e:
-                    self._logger.log_error("Exception while trying to run job: ", e)
-                    state.submissions[sid] = {}
+                if (len(jobTuples) > 0):
+                    try:
+                        # Fetch the comments
+                        submission = self.reddit.submission(sid)
+                        submission.comments.replace_more(limit=0)
+
+                        # amalgamate all the terms from all active jobs for this submission
+                        allTerms = [j.Terms for (j, c) in jobTuples]
+                        allTerms = self._flatten(allTerms, 2)
+                        allTerms = [i for i in set(allTerms) if i is not None and len(i) > 0]
+
+                        if len(allTerms) > 0:
+                            ignored_comment_ids = []
+                            for (job, parentComment) in jobTuples:
+                                if job.CountCommentId is not None:
+                                    ignored_comment_ids.append(job.CountCommentId)
+                                ignored_comment_ids.append(parentComment.id)
+
+                            # Count the comments
+                            counts = self.CountTheComments(submission.comments, allTerms, set(ignored_comment_ids))
+
+                            for (job, parentComment) in jobTuples:
+                                # Form the comment
+                                commentStr = self.commentFormatter.format(counts, job.Terms, np.array(allTerms), job.RemainingUpdates-1)
+
+                                # Edit existing comment
+                                if (job.CountCommentId is not None):
+                                    try:
+                                        countComment = self.reddit.comment(id=job.CountCommentId)
+                                        countComment.edit(commentStr)
+                                    except Exception as e:
+                                        self._logger.log_error("Exception while trying to edit count comment: ", e)
+                                # Reply to parent
+                                else:
+                                    try:
+                                        countComment = parentComment.reply(commentStr)
+                                        job.CountCommentId = countComment.id
+                                    except Exception as e:
+                                        self._logger.log_error("Exception while trying to reply to parent: ", e)
+
+                                # decrease the counter
+                                job.RemainingUpdates -= 1
+
+                                if job.RemainingUpdates <= 0:
+                                    jobs_to_remove.add(parentComment.id)
+                        else:
+                            for (job, parentComment) in jobTuples:
+                                job.RemainingUpdates -= 1
+
+                                if job.RemainingUpdates <= 0:
+                                    jobs_to_remove.add(parentComment.id)
 
 
-            # Remove expired jobs
-            for pid in jobs_to_remove:
-                state.submissions[sid].pop(pid)
+                    except Exception as e:
+                        self._logger.log_error("Exception while trying to run job: ", e)
+                        state.submissions[sid] = {}
 
-        # remove states with no jobs
-        for sid in [i for i in state.submissions]:
-            if len(state.submissions[sid]) == 0:
-                state.submissions.pop(sid)
+
+                # Remove expired jobs
+                for pid in jobs_to_remove:
+                    state.submissions[sid].pop(pid)
+
+            # remove states with no jobs
+            for sid in [i for i in state.submissions]:
+                if len(state.submissions[sid]) == 0:
+                    state.submissions.pop(sid)
+        except Exception as e:
+            self._logger.log_error("Exception while reading state... resetting state", e)
+            state = State()
 
         # Update active jobs file
         self._storage.SetState(state)
@@ -136,7 +154,7 @@ class JobRunner:
             self.mutex.acquire()
             self.RunScheduledJobs()
             self.mutex.release()
-            time.sleep(3600)
+            time.sleep(self._updateInterval.total_seconds())
 
     # Run only jobs that have never been run before
     def RunNewJobs(self):

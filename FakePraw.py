@@ -1,6 +1,7 @@
 from re import sub
 import time, random
 
+
 class FakeState:
     def __init__(self):
         self.Username = None
@@ -67,28 +68,43 @@ class Inbox():
                 self._add_comment(new_comment)
                 yield new_comment
 
-class Comment:
+
+class Comment():
+    @property
+    def body(self):
+        if self._throw_error_on_get_body:
+            raise Exception()
+        return self._body
+
+    @body.setter
+    def body(self, value):
+        self._body = value
+
     def __init__(self, author_name, body, submission, parent=None):
         parent = parent or submission
         self.submission = submission
         self._parent = parent
         self._read = True
+        self._body = body
 
         self.id = generate_id()
         self.submission._reddit._comments[self.id] = self
 
         self.author = Redditor(author_name)
-        self.body = body
         self.replies = CommentForest()
         self._throw_error_on_edit = False
+        self._throw_error_on_reply = False
+        self._throw_error_on_get_body = False
 
     def reply(self, body, author_name=State.Username):
+        if self._throw_error_on_reply:
+            raise Exception()
         comment = Comment(author_name, body, self.submission, self)
         self.replies._comments.append(comment)
         return comment
 
     def edit(self, body):
-        self.body = body
+        self._body = body
         if self._throw_error_on_edit:
             raise Exception()
 
@@ -122,9 +138,11 @@ class Submission:
 class CommentForest:
     def __init__(self):
         self._comments = []
+        self._throw_error_on_replace_more = False
 
     def replace_more(self, limit):
-        pass
+        if self._throw_error_on_replace_more:
+            raise Exception()
 
     def __iter__(self):
         return iter(self._comments)

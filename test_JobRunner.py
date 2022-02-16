@@ -1,3 +1,4 @@
+from itertools import count
 import pytest
 import FakePraw
 import random
@@ -9,7 +10,7 @@ from FakeMutex import FakeMutex
 import numpy as np
 from FakeCommentFormatter import FakeCommentFormatter
 from test_JobLocator import jobLocator
-from Storage import MemoryStorage as Storage
+import Storage
 
 np.set_printoptions(precision=2, suppress=True, )
 
@@ -27,7 +28,7 @@ def reddit():
 
 @pytest.fixture()
 def storage():
-    storage = Storage(State())
+    storage = Storage.MemoryStorage(State())
     yield storage
     storage.DeleteState()
 
@@ -36,8 +37,12 @@ def commentFormatter():
     yield FakeCommentFormatter()
 
 @pytest.fixture()
-def jobRunner(reddit, storage, commentFormatter):
-    yield JobRunner(FakeMutex(), storage, TestData.Username, reddit, commentFormatter=commentFormatter)
+def jobRunner(reddit, storage, commentFormatter, fakeLogger):
+    yield JobRunner(FakeMutex(), storage, TestData.Username, reddit, commentFormatter=commentFormatter, logger=fakeLogger)
+
+@pytest.fixture()
+def fakeLogger():
+    yield FakeLogger()
 
 class MinimalComment:
     def __init__(self, body):
@@ -54,6 +59,24 @@ class ExceptionComment:
     def edit(self, body):
         raise Exception()
 
+class FakeLogger:
+    def __init__(self):
+        self.logs = []
+        self.errorLogs = []
+    def log(self, message):
+        self.logs.append(message)
+    def log_error(self, message, error):
+        self.errorLogs.append((message, error))
+
+class ErrorStorage:
+    def GetState(self):
+        raise Exception()
+    def SetState(self, state):
+        pass
+class ErrorState:
+    @property
+    def submissions(self):
+        raise Exception()
 
 class TestCollectComments:
     def test_count_comments(self, jobRunner):
@@ -394,47 +417,302 @@ class TestModifyJobFile:
         assert len(commentFormatter.Counts) == 2
 
 class TestErrorRecovery:
-    def test_thread_is_locked(self):
-        return
+    def test_submission_is_borked(self, reddit, storage):
+        fakeLogger = FakeLogger()
+        jobRunner = JobRunner(FakeMutex(), storage, TestData.Username, reddit, logger=fakeLogger)
 
-    def test_thread_is_archived(self):
-        return
+        submission = reddit._create_submission("", "submitter")
 
-    def test_sub_is_private(self):
-        return
+        # Create job
+        job = Job()
+        job.RemainingUpdates = 5
+        job.Terms = [["rem"]]
 
-    def test_will_not_count_borked_comments(self):
-        return
-    # - author null = removed or deleted -> doesn't matter unless this is the count comment
-    # - body null
-    # - fetching comment body, editing comment, fetching submission, or otherwise interacting with the api creates exception
-    #   - should still recover and decrement counter
-    def test_load_job_with_invalid_comment_to_count_id(self):
-        return
+        summon = submission.reply("/u/countthecomments", "bar")
 
-    def test_load_job_with_invalid_count_comment_id(self):
-        return
+        # Write job to file
+        state = storage.GetState()
+        state.submissions[submission.id] = {}
+        state.submissions[submission.id][summon.id] = job
+        storage.SetState(state)
 
-    def test_load_job_with_invalid_parent_comment_id(self):
-        return
+        # bork submission
+        submission.comments._throw_error_on_replace_more = True
 
-    def test_load_job_with_invalid_submission_id(self):
-        return
+        # Run job
+        jobRunner.RunScheduledJobs()
 
-    def test_load_job_with_negative_remaining_updates(self):
-        return
+        assert len(fakeLogger.errorLogs) == 1
 
-    def test_load_job_with_no_terms(self):
-        return
+    def test_parent_comment_is_borked(self, reddit, storage):
+        fakeLogger = FakeLogger()
+        jobRunner = JobRunner(FakeMutex(), storage, TestData.Username, reddit, logger=fakeLogger)
 
-    def test_load_job_with_broken_data(self):
-        return
+        submission = reddit._create_submission("", "submitter")
 
-    def test_load_corrupt_job_file(self):
-        return
+        # Create job
+        job = Job()
+        job.RemainingUpdates = 5
+        job.Terms = [["rem"]]
 
-    def test_praw_api_throws_exception(self):
-        return
+        summon = submission.reply("/u/countthecomments", "bar")
 
-    def test_fetch_submission_with_no_permission(self):
-        return
+        # Write job to file
+        state = storage.GetState()
+        state.submissions[submission.id] = {}
+        state.submissions[submission.id][summon.id] = job
+        storage.SetState(state)
+
+        # bork parent comment
+        summon._throw_error_on_reply = True
+
+        # Run job
+        jobRunner.RunScheduledJobs()
+
+        assert len(fakeLogger.errorLogs) == 1
+
+    def test_count_comment_is_borked(self, reddit, storage, jobRunner, fakeLogger):
+        submission = reddit._create_submission("", "submitter")
+
+        # Create job
+        job = Job()
+        job.RemainingUpdates = 5
+        job.Terms = [["rem"]]
+
+        summon = submission.reply("/u/countthecomments", "bar")
+
+        # Write job to file
+        state = storage.GetState()
+        state.submissions[submission.id] = {}
+        state.submissions[submission.id][summon.id] = job
+        storage.SetState(state)
+
+        jobRunner.RunScheduledJobs()
+
+        # bork count comment
+        countComment = [c for c in summon.replies][0]
+        countComment._throw_error_on_edit = True
+
+        jobRunner.RunScheduledJobs()
+
+        assert len(fakeLogger.errorLogs) == 1
+
+    def test_will_not_count_borked_comments(self, reddit, jobRunner, storage, commentFormatter):
+        submission = reddit._create_submission("", "submitter")
+
+        summonComment = submission.reply("/u/CountTheComments Rem Ram", "summoner")
+        goodComment = submission.reply("rem ram felix")
+        borkedComment = submission.reply("rem ram felix")
+        borkedComment._throw_error_on_get_body = True
+
+        job = Job()
+        job.RemainingUpdates = 5
+        job.Terms = [["rem"], ["ram"]]
+
+        state = storage.GetState()
+        state.submissions[submission.id] = {}
+        state.submissions[submission.id][summonComment.id] = job
+        storage.SetState(state)
+
+        jobRunner.RunScheduledJobs()
+
+        counts = commentFormatter.Counts[0]
+
+        assert np.all(np.equal(np.any(counts, axis=1), np.array([False, True, False])))
+
+    def test_load_job_with_invalid_comment_to_count_id(self, reddit, jobRunner, storage, commentFormatter):
+        submission = reddit._create_submission("", "submitter")
+
+        summonComment = submission.reply("/u/CountTheComments Rem Ram", "summoner")
+        goodComment = submission.reply("rem ram felix")
+
+        job = Job()
+        job.RemainingUpdates = 5
+        job.Terms = [["rem"], ["ram"]]
+
+        state = storage.GetState()
+        state.submissions[submission.id] = {}
+        state.submissions[submission.id][summonComment.id] = job
+        storage.SetState(state)
+
+        submission.comments._comments.append(None)
+        jobRunner.RunScheduledJobs()
+
+        counts = commentFormatter.Counts[0]
+
+        assert np.all(np.equal(np.any(counts, axis=1), np.array([False, True, False])))
+
+    def test_load_job_with_invalid_count_comment_id(self, reddit, jobRunner, storage, fakeLogger):
+        submission = reddit._create_submission("", "submitter")
+
+        summonComment = submission.reply("/u/CountTheComments Rem Ram", "summoner")
+
+        job = Job()
+        job.RemainingUpdates = 5
+        job.Terms = [["rem"], ["ram"]]
+
+        state = storage.GetState()
+        state.submissions[submission.id] = {}
+        state.submissions[submission.id][summonComment.id] = job
+        storage.SetState(state)
+
+        jobRunner.RunScheduledJobs()
+
+        countComment = [c for c in summonComment.replies][0]
+        reddit._comments[countComment.id] = None
+
+        jobRunner.RunScheduledJobs()
+
+        assert storage.GetState().submissions[submission.id][summonComment.id].RemainingUpdates == 3
+        assert len(fakeLogger.errorLogs) == 1
+
+    def test_load_job_with_invalid_parent_comment_id(self, reddit, jobRunner, storage, fakeLogger):
+        submission = reddit._create_submission("", "submitter")
+
+        summonComment = submission.reply("/u/CountTheComments Rem Ram", "summoner")
+
+        job = Job()
+        job.RemainingUpdates = 5
+        job.Terms = [["rem"], ["ram"]]
+
+        state = storage.GetState()
+        state.submissions[submission.id] = {}
+        state.submissions[submission.id][summonComment.id] = job
+        storage.SetState(state)
+
+        reddit._comments[summonComment.id] = None
+
+        jobRunner.RunScheduledJobs()
+
+        assert submission.id not in storage.GetState().submissions
+        assert len(fakeLogger.errorLogs) == 1
+
+    def test_load_job_with_invalid_submission_id(self, reddit, jobRunner, storage, fakeLogger):
+        submission = reddit._create_submission("", "submitter")
+
+        summonComment = submission.reply("/u/CountTheComments Rem Ram", "summoner")
+
+        job = Job()
+        job.RemainingUpdates = 5
+        job.Terms = [["rem"], ["ram"]]
+
+        state = storage.GetState()
+        state.submissions[submission.id] = {}
+        state.submissions[submission.id][summonComment.id] = job
+        storage.SetState(state)
+
+        reddit._submissions[submission.id] = None
+
+        jobRunner.RunScheduledJobs()
+
+        assert submission.id not in storage.GetState().submissions
+        assert len(fakeLogger.errorLogs) == 1
+
+    def test_load_job_with_negative_remaining_updates(self, reddit, jobRunner, storage, commentFormatter):
+        submission = reddit._create_submission("", "submitter")
+
+        summonComment = submission.reply("/u/CountTheComments Rem Ram", "summoner")
+
+        job = Job()
+        job.RemainingUpdates = -1
+        job.Terms = [["rem"], ["ram"]]
+
+        state = storage.GetState()
+        state.submissions[submission.id] = {}
+        state.submissions[submission.id][summonComment.id] = job
+        storage.SetState(state)
+
+        jobRunner.RunScheduledJobs()
+
+        assert submission.id not in storage.GetState().submissions
+        assert len(commentFormatter.Counts) == 0
+
+    def test_load_job_with_no_terms(self, reddit, jobRunner, storage, commentFormatter):
+        submission = reddit._create_submission("", "submitter")
+
+        summonComment = submission.reply("/u/CountTheComments Rem Ram", "summoner")
+
+        job = Job()
+        job.RemainingUpdates = 2
+        job.Terms = []
+
+        state = storage.GetState()
+        state.submissions[submission.id] = {}
+        state.submissions[submission.id][summonComment.id] = job
+        storage.SetState(state)
+
+        jobRunner.RunScheduledJobs()
+
+        assert storage.GetState().submissions[submission.id][summonComment.id].RemainingUpdates == 1
+        assert len(commentFormatter.Counts) == 0
+
+    def test_load_job_with_empty_terms(self, reddit, jobRunner, storage, commentFormatter):
+        submission = reddit._create_submission("", "submitter")
+
+        summonComment = submission.reply("/u/CountTheComments Rem Ram", "summoner")
+
+        job = Job()
+        job.RemainingUpdates = 2
+        job.Terms = [["", ""], [""]]
+
+        state = storage.GetState()
+        state.submissions[submission.id] = {}
+        state.submissions[submission.id][summonComment.id] = job
+        storage.SetState(state)
+
+        jobRunner.RunScheduledJobs()
+
+        assert storage.GetState().submissions[submission.id][summonComment.id].RemainingUpdates == 1
+        assert len(commentFormatter.Counts) == 0
+
+    def test_load_job_with_null_terms(self, reddit, jobRunner, storage, commentFormatter):
+        submission = reddit._create_submission("", "submitter")
+
+        summonComment = submission.reply("/u/CountTheComments Rem Ram", "summoner")
+
+        job = Job()
+        job.RemainingUpdates = 2
+        job.Terms = [[None]]
+
+        state = storage.GetState()
+        state.submissions[submission.id] = {}
+        state.submissions[submission.id][summonComment.id] = job
+        storage.SetState(state)
+
+        jobRunner.RunScheduledJobs()
+
+        assert storage.GetState().submissions[submission.id][summonComment.id].RemainingUpdates == 1
+        assert len(commentFormatter.Counts) == 0
+
+    def test_load_job_with_empty_term_sets(self, reddit, jobRunner, storage, commentFormatter):
+        submission = reddit._create_submission("", "submitter")
+
+        summonComment = submission.reply("/u/CountTheComments Rem Ram", "summoner")
+
+        job = Job()
+        job.RemainingUpdates = 2
+        job.Terms = [[], []]
+
+        state = storage.GetState()
+        state.submissions[submission.id] = {}
+        state.submissions[submission.id][summonComment.id] = job
+        storage.SetState(state)
+
+        jobRunner.RunScheduledJobs()
+
+        assert storage.GetState().submissions[submission.id][summonComment.id].RemainingUpdates == 1
+        assert len(commentFormatter.Counts) == 0
+
+    def test_load_job_with_borked_storage(self, reddit, commentFormatter, fakeLogger):
+        jobRunner = JobRunner(FakeMutex(), ErrorStorage(), TestData.Username, reddit, commentFormatter=commentFormatter, logger=fakeLogger)
+        jobRunner.RunScheduledJobs()
+
+        assert len(commentFormatter.Counts) == 0
+        assert len(fakeLogger.errorLogs) == 1
+
+    def test_load_job_with_borked_state(self, reddit, jobRunner, storage, commentFormatter, fakeLogger):
+        storage.SetState(ErrorState())
+        jobRunner.RunScheduledJobs()
+
+        assert len(commentFormatter.Counts) == 0
+        assert len(fakeLogger.errorLogs) == 1
