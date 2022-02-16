@@ -14,8 +14,12 @@ class MemoryStorage:
 
 class FileStorage:
     def __init__(self, fileName, state=None):
-        self.SetState(state or State())
         self._fileName = fileName
+        if state is None:
+            if not os.path.exists(self._fileName):
+                self.SetState(State())
+        else:
+            self.SetState(state)
 
     def GetState(self):
         with open(self._fileName, "r", encoding="UTF-8") as f:

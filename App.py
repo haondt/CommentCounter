@@ -7,7 +7,6 @@ from Logger import Logger
 from Models.State import State
 import JsonExtended as json
 import os
-
 from Storage import FileStorage
 
 activeJobFile = "activeJobs.json"
