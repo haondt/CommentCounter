@@ -55,7 +55,12 @@ class JobLocater:
 
     def run(self):
         self._logger.log("Starting")
-        for comment in Utils.stream_generator(self.reddit.inbox.unread, self._run_event):
+        stream = None
+        if self._run_event is not None:
+            stream = Utils.stream_generator(self.reddit.inbox.unread, self._run_event)
+        else:
+            stream = self.reddit.inbox.stream()
+        for comment in stream:
             self._logger.log("Processing new reply in inbox " + str(comment) + str(comment is None))
             # Filter out non-mentions and PMs
             try:

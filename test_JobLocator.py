@@ -49,15 +49,14 @@ def reddit():
 
 @pytest.fixture()
 def emptyJobLocator():
-    return JobLocater(None, None, TestData.Username, None, None)
+    return JobLocater(None, None, None, TestData.Username, None, None)
 
 @pytest.fixture()
 def jobLocator(reddit):
     storage = Storage(State())
-    yield JobLocater(FakeMutex(), storage, TestData.Username, reddit, lambda: None, 24)
+    yield JobLocater(None, FakeMutex(), storage, TestData.Username, reddit, lambda: None, 24)
     # cleanup
-    if os.path.exists(TestData.ActiveJobFile):
-        os.remove(TestData.ActiveJobFile)
+    storage.DeleteState()
 
 class TestRegex:
     class MinimalComment:
@@ -117,7 +116,7 @@ class TestAddJobs:
 
     def test_add_job(self, jobLocator):
         # Run through inbox
-        Timeout.Run(jobLocator.Run, 0.5)
+        Timeout.Run(jobLocator.run, 0.5)
 
         # Get counts for each comment grouped by its terms
         summons = {}

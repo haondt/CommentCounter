@@ -11,6 +11,7 @@ import numpy as np
 from FakeCommentFormatter import FakeCommentFormatter
 from test_JobLocator import jobLocator
 import Storage
+from FakeEvent import FakeEvent
 
 np.set_printoptions(precision=2, suppress=True, )
 
@@ -38,7 +39,7 @@ def commentFormatter():
 
 @pytest.fixture()
 def jobRunner(reddit, storage, commentFormatter, fakeLogger):
-    yield JobRunner(FakeMutex(), storage, TestData.Username, reddit, commentFormatter=commentFormatter, logger=fakeLogger)
+    yield JobRunner(FakeEvent(), FakeMutex(), storage, TestData.Username, reddit, commentFormatter=commentFormatter, logger=fakeLogger)
 
 @pytest.fixture()
 def fakeLogger():
@@ -419,7 +420,7 @@ class TestModifyJobFile:
 class TestErrorRecovery:
     def test_submission_is_borked(self, reddit, storage):
         fakeLogger = FakeLogger()
-        jobRunner = JobRunner(FakeMutex(), storage, TestData.Username, reddit, logger=fakeLogger)
+        jobRunner = JobRunner(FakeEvent(), FakeMutex(), storage, TestData.Username, reddit, logger=fakeLogger)
 
         submission = reddit._create_submission("", "submitter")
 
@@ -446,7 +447,7 @@ class TestErrorRecovery:
 
     def test_parent_comment_is_borked(self, reddit, storage):
         fakeLogger = FakeLogger()
-        jobRunner = JobRunner(FakeMutex(), storage, TestData.Username, reddit, logger=fakeLogger)
+        jobRunner = JobRunner(FakeEvent(), FakeMutex(), storage, TestData.Username, reddit, logger=fakeLogger)
 
         submission = reddit._create_submission("", "submitter")
 
@@ -704,7 +705,7 @@ class TestErrorRecovery:
         assert len(commentFormatter.Counts) == 0
 
     def test_load_job_with_borked_storage(self, reddit, commentFormatter, fakeLogger):
-        jobRunner = JobRunner(FakeMutex(), ErrorStorage(), TestData.Username, reddit, commentFormatter=commentFormatter, logger=fakeLogger)
+        jobRunner = JobRunner(FakeEvent(), FakeMutex(), ErrorStorage(), TestData.Username, reddit, commentFormatter=commentFormatter, logger=fakeLogger)
         jobRunner.RunScheduledJobs()
 
         assert len(commentFormatter.Counts) == 0
