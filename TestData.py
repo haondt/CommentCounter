@@ -57,14 +57,14 @@ SummonCommentPairs = [
     ("         /u/CountTheComments Rem Ram Felix", [["rem"], ["ram"], ["felix"]]),
     ("u/countthecomments rem ram felix", [["rem"], ["ram"], ["felix"]]),
     ("u/COUNTTHECOMMENTS rem Ram", [["rem"], ["ram"]]),
-    ("/u/COuntTheComments Rem Ram Felix", [["rem"], ["ram"], ["felix"]]),
+    ("/u/CoUnTtHeCoMmEnTs Rem Ram Felix", [["rem"], ["ram"], ["felix"]]),
     ("/u/COuntTheComments Rem                    Ram   Felix", [["rem"], ["ram"], ["felix"]]),
     ("u/CountTheComments Rem Rem", [["rem"]]),
     ("u/CountTheComments Rem/Ram Rem/Emilia Emilia/Rem", [["rem", "ram"], ["rem", "emilia"], ["emilia", "rem"]]),
     ("u/CountTheComments REM/Ram rem/Emilia", [["rem", "ram"], ["rem", "emilia"]]),
     ("u/CountTheComments REM/Ram Emilia Ram", [["rem", "ram"], ["emilia"], ["ram"]]),
     ("Summoning u/CountTheComments Rem Ram", [["rem"], ["ram"]]),
-    ("         /    u/CountTheComments Rem Ram Felix", [["rem"], ["ram"], ["felix"]]), 
+    ("         /    u/CountTheComments Rem Ram Felix", [["rem"], ["ram"], ["felix"]]),
     ("!!!.? u/CountTheComments Rem Ram Felix", [["rem"], ["ram"], ["felix"]])
 ]
 

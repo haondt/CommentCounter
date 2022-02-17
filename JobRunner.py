@@ -8,7 +8,8 @@ import Utils
 from Models.State import State
 
 class JobRunner:
-    def __init__(self, mutex, storage, username, reddit, updateInterval=timedelta(hours=1), commentFormatter=CommentFormatter(), logger=Logger()):
+    def __init__(self, run_event, mutex, storage, username, reddit, updateInterval=timedelta(hours=1), commentFormatter=CommentFormatter(), logger=Logger()):
+        self._run_event = run_event
         self.mutex = mutex
         self._storage = storage
         self.reddit = reddit
@@ -51,8 +52,6 @@ class JobRunner:
 
 
     def RunJobs(self, onlyRunNewJobs=False):
-        self.mutex.acquire()
-
         try:
             state = self._storage.GetState()
         except Exception as e:
@@ -62,6 +61,7 @@ class JobRunner:
 
         try:
             for sid in state.submissions:
+                self._logger.log(f"Running jobs for submission {sid}")
                 # Get jobs to update
                 jobTuples = []
                 jobs_to_remove = set()
@@ -96,6 +96,7 @@ class JobRunner:
                             counts = self.CountTheComments(submission.comments, allTerms, set(ignored_comment_ids))
 
                             for (job, parentComment) in jobTuples:
+                                self._logger.log(f"Updating comment for parent {parentComment.id} ({job.RemainingUpdates} remaining)")
                                 # Form the comment
                                 commentStr = self.commentFormatter.format(counts, job.Terms, np.array(allTerms), job.RemainingUpdates-1)
 
@@ -147,14 +148,15 @@ class JobRunner:
         # Update active jobs file
         self._storage.SetState(state)
 
-        self.mutex.release()
-
-    def Run(self):
-        while True:
+    def run(self):
+        self._logger.log("Starting")
+        while not self._run_event.is_set():
             self.mutex.acquire()
             self.RunScheduledJobs()
             self.mutex.release()
-            time.sleep(self._updateInterval.total_seconds())
+            self._logger.log(f"Waiting {self._updateInterval.total_seconds()}s for next run")
+            self._run_event.wait(self._updateInterval.total_seconds())
+        self._logger.log("Stopping")
 
     # Run only jobs that have never been run before
     def RunNewJobs(self):

@@ -7,10 +7,11 @@ import Utils
 
 
 class JobLocater:
-    def __init__(self, mutex, storage, username, reddit, forceRun, numUpdates=24, logger=Logger()):
+    def __init__(self, run_event, mutex, storage, username, reddit, forceRun, numUpdates=24, logger=Logger()):
         self.mutex = mutex
         self.reddit = reddit
         self._storage = storage
+        self._run_event = run_event
         self.forceRun = forceRun
         self.numUpdates = numUpdates
         self.username = username.lower()
@@ -52,8 +53,10 @@ class JobLocater:
             return len(terms) > 0, terms
         return False, None
 
-    def Run(self):
-        for comment in self.reddit.inbox.stream():
+    def run(self):
+        self._logger.log("Starting")
+        for comment in Utils.stream_generator(self.reddit.inbox.unread, self._run_event):
+            self._logger.log("Processing new reply in inbox " + str(comment) + str(comment is None))
             # Filter out non-mentions and PMs
             try:
                 if self.is_mention(comment):
@@ -89,11 +92,16 @@ class JobLocater:
                         self.mutex.release()
 
                         if rewriteActiveJobs:
+                            self.mutex.acquire()
                             self.forceRun()
+                            self.mutex.release()
+                else:
+                    self._logger.log(f"Ignoring reply {str(comment)} because it is not a mention")
             except Exception as e:
                 self._logger.log_error("Exception while locating job", e)
                 try:
                     comment.mark_read()
                 except Exception as e2:
                     self._logger.log_error("Exception while trying to mark comment as read", e2)
+        self._logger.log("Stopping")
 
