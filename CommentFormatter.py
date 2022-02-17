@@ -7,10 +7,10 @@ class CommentFormatter:
 
         # compute the counts for each term set in the job
         for term_set in job_terms:
-            mask = np.any((np.array(term_set)[:,None] == all_terms), axis=0)
+            mask = np.any((np.array(term_set)[:, None] == all_terms), axis=0)
             mask = np.tile(mask, (len(counts), 1))
 
-            count = np.sum(np.any((mask * counts), axis=0))
+            count = np.sum(np.any((mask * counts), axis=1))
 
             countStr = '/'.join([i.title() for i in term_set])
             countStr += '|'
