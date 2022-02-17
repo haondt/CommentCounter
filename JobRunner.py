@@ -8,7 +8,7 @@ import Utils
 from Models.State import State
 
 class JobRunner:
-    def __init__(self, run_event, mutex, storage, username, reddit, updateInterval=timedelta(hours=1), commentFormatter=CommentFormatter(), logger=Logger()):
+    def __init__(self, run_event, mutex, storage, username, reddit, updateInterval=timedelta(hours=1), commentFormatter=CommentFormatter(), logger=Logger(), onlyTopLevel=False):
         self._run_event = run_event
         self.mutex = mutex
         self._storage = storage
@@ -17,6 +17,7 @@ class JobRunner:
         self.username = username.lower()
         self.commentFormatter = commentFormatter
         self._logger = logger
+        self._onlyTopLevel = onlyTopLevel
 
     # Return a matrix where each row represents one comment,
     # And each column is a term. Each cell represents if
@@ -30,7 +31,12 @@ class JobRunner:
                 fr".*\b{term}\b",
                 (re.I | re.S)
             )
-            for comment in comments:
+            allComments = None
+            if self._onlyTopLevel:
+                allComments = comments
+            else:
+                allComments = comments.list()
+            for comment in allComments:
                 try:
                     if comment.body is None or comment.id in ignore_comments or Utils.is_mention(self.username, comment):
                         termVector.append(False)
@@ -61,7 +67,7 @@ class JobRunner:
 
         try:
             for sid in state.submissions:
-                self._logger.log(f"Running jobs for submission {sid}")
+                self._logger.log(f"Checking jobs for submission {sid}")
                 # Get jobs to update
                 jobTuples = []
                 jobs_to_remove = set()
@@ -77,8 +83,10 @@ class JobRunner:
                 if (len(jobTuples) > 0):
                     try:
                         # Fetch the comments
+                        self._logger.log(f"Replace-moreing submission {sid}")
                         submission = self.reddit.submission(sid)
-                        submission.comments.replace_more(limit=0)
+                        submission.comments.replace_more(limit=None)
+                        self._logger.log(f"Finished replace-moreing submission {sid}")
 
                         # amalgamate all the terms from all active jobs for this submission
                         allTerms = [j.Terms for (j, c) in jobTuples]
@@ -93,7 +101,9 @@ class JobRunner:
                                 ignored_comment_ids.append(parentComment.id)
 
                             # Count the comments
+                            self._logger.log(f"Counting comments for submission {sid}")
                             counts = self.CountTheComments(submission.comments, allTerms, set(ignored_comment_ids))
+                            self._logger.log(f"Finished counting comments for submission {sid}")
 
                             for (job, parentComment) in jobTuples:
                                 self._logger.log(f"Updating comment for parent {parentComment.id} ({job.RemainingUpdates} remaining)")

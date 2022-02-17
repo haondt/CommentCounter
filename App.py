@@ -15,7 +15,7 @@ activeJobFile = "activeJobs.json"
 logFile = "log.txt"
 username = "CountTheComments"
 updateInterval = timedelta(hours=1)
-numUpdates = 24
+numUpdates = 6
 
 
 reddit = praw.Reddit('bot1')
