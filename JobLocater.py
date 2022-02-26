@@ -61,7 +61,7 @@ class JobLocater:
         else:
             stream = self.reddit.inbox.stream()
         for comment in stream:
-            self._logger.log("Processing new reply in inbox " + str(comment) + str(comment is None))
+            self._logger.log("Processing new reply in inbox " + str(comment))
             # Filter out non-mentions and PMs
             try:
                 if self.is_mention(comment):
